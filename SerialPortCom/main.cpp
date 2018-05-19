@@ -12,12 +12,16 @@ void showError(MYSQL* mysql)
 }
 int main(int argc, char** argv)
 {
+	for (int c = 0; c < argc; c++)
+	{
+		std::cout << "argv[" << c << "]=\"" << argv[c] << "\"\n";
+	}
 	// SQL stuff //
-	std::string sqlAddress = "localhost";
-	UINT16      sqlPort    = 3306;
-	std::string sqlUser    = "root";
-	std::string sqlPass    = "";
-	std::string sqlDb      = "dht-sensor";
+	std::string sqlAddress = argv[1];
+	UINT16      sqlPort    = atoi(argv[2]);
+	std::string sqlUser    = argv[3];
+	std::string sqlPass    = argv[4];
+	std::string sqlDb      = argv[5];
 	MYSQL* mysql;
 	mysql = mysql_init(nullptr);
 	if (!mysql_real_connect(mysql, sqlAddress.c_str(), sqlUser.c_str(),
