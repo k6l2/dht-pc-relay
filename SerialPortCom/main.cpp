@@ -12,10 +12,16 @@ void showError(MYSQL* mysql)
 }
 int main(int argc, char** argv)
 {
-	for (int c = 0; c < argc; c++)
+	if (argc != 7)
 	{
-		std::cout << "argv[" << c << "]=\"" << argv[c] << "\"\n";
+		std::cout << 
+			"USAGE: SerialPortCom.exe [sqlAddress] [sqlPort] [sqlUser] [sqlPass] [sqlDb] [lpFileName/com-port-name]\n";
+		return EXIT_FAILURE;
 	}
+	/// for (int c = 0; c < argc; c++)
+	/// {
+	/// 	std::cout << "argv[" << c << "]=\"" << argv[c] << "\"\n";
+	/// }
 	// SQL stuff //
 	std::string sqlAddress = argv[1];
 	UINT16      sqlPort    = atoi(argv[2]);
@@ -28,12 +34,13 @@ int main(int argc, char** argv)
 			sqlPass.c_str(), sqlDb.c_str(), sqlPort, nullptr, 0))
 	{
 		showError(mysql);
+		return EXIT_FAILURE;
 	}
 	//mysql_close(mysql);
 	// COM port stuff //
 	BOOL success;
 	HANDLE serialHandle;
-	serialHandle = CreateFile("COM5", GENERIC_READ | GENERIC_WRITE,
+	serialHandle = CreateFile(argv[6], GENERIC_READ | GENERIC_WRITE,
 		0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 	if (serialHandle == INVALID_HANDLE_VALUE)
 	{
