@@ -35,14 +35,15 @@ int main(int argc, char** argv)
 	std::string sqlDb      = argv[5];
 	MYSQL* mysql;
 	mysql = mysql_init(nullptr);
-	if (!mysql_real_connect(mysql, sqlAddress.c_str(), sqlUser.c_str(),
+	std::cout << "connecting to SQL server...\n";
+	while (!mysql_real_connect(mysql, sqlAddress.c_str(), sqlUser.c_str(),
 			sqlPass.c_str(), sqlDb.c_str(), sqlPort, nullptr, 0))
 	{
 		showError(mysql);
-		system("pause");
-		return EXIT_FAILURE;
 	}
+	std::cout << "SQL server connected!\n";
 	// Superior (hopefully) Bluetooth Serial library stuff //
+	std::cout << "Querying synced bluetooth device list...\n";
 	std::unique_ptr<DeviceINQ> inq(DeviceINQ::Create());
 	std::vector<device> devices = inq->Inquire();
 	BTSerialPortBinding* serialPortBinding = nullptr;
@@ -76,6 +77,7 @@ int main(int argc, char** argv)
 	std::string cumulativeBuffer;
 	while(true)
 	{
+		///TODO: reconnect to the SQL server if the connection is lost
 		int numBytesRead;
 		static const size_t BUFFER_SIZE = 1024;
 		char buffer[BUFFER_SIZE];
