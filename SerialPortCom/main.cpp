@@ -76,7 +76,7 @@ int main(int argc, char** argv)
 		system("pause");
 		return EXIT_FAILURE;
 	}
-	serialPortBinding->Connect();
+	//serialPortBinding->Connect();
 	///while (true)
 	///{
 	///}
