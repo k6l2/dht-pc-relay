@@ -1,3 +1,5 @@
+///TODO: some kind of log file maybe?... 
+///	or maybe that should just be done at the command line...
 #include <Windows.h>
 #include <iostream>
 #include <string>
@@ -35,13 +37,13 @@ int main(int argc, char** argv)
 	std::string sqlDb      = argv[5];
 	MYSQL* mysql;
 	mysql = mysql_init(nullptr);
-	std::cout << "connecting to SQL server...\n";
+	std::cout << "Connecting to SQL server... ";
 	while (!mysql_real_connect(mysql, sqlAddress.c_str(), sqlUser.c_str(),
 			sqlPass.c_str(), sqlDb.c_str(), sqlPort, nullptr, 0))
 	{
 		showError(mysql);
 	}
-	std::cout << "SQL server connected!\n";
+	std::cout << "Connected!\n";
 	// Superior (hopefully) Bluetooth Serial library stuff //
 	std::cout << "Querying synced bluetooth device list...\n";
 	std::unique_ptr<DeviceINQ> inq(DeviceINQ::Create());
@@ -55,13 +57,14 @@ int main(int argc, char** argv)
 		{
 			try
 			{
+				std::cout << "Device name matches argument[6]! Binding... ";
 				serialPortBinding = BTSerialPortBinding::Create(device.address, 1);
-				serialPortBinding->setTimoutRead(8);
+				std::cout << "Success!\n";
+				serialPortBinding->setTimoutRead(1);
 			}
 			catch (const BluetoothException& bte)
 			{
-				std::cerr << ": failed to create serial port binding!";
-				std::cerr << " BluetoothException= \"" << bte.what() << "\"\n";
+				std::cerr << "FAILED! BluetoothException= \"" << bte.what() << "\"\n";
 				system("pause");
 				return EXIT_FAILURE;
 			}
@@ -69,10 +72,14 @@ int main(int argc, char** argv)
 	}
 	if (!serialPortBinding)
 	{
-		std::cerr << ": could not find device \"" << argv[6] << "\"\n";
+		std::cerr << " could not find device \"" << argv[6] << "\"\n";
 		system("pause");
 		return EXIT_FAILURE;
 	}
+	serialPortBinding->Connect();
+	///while (true)
+	///{
+	///}
 	// Query device & send data to SQL server! //
 	std::string cumulativeBuffer;
 	while(true)
@@ -85,27 +92,27 @@ int main(int argc, char** argv)
 		bool portConnected   = true;
 		try
 		{
+			std::cout << "serialPortBinding checking data available... ";
 			dataIsAvailable = serialPortBinding->IsDataAvailable();
-			std::cout << "serialPortBinding data available...\n";
+			std::cout << "Done!\n";
 		}
 		catch (const BluetoothException& bte)
 		{
-			std::cerr << "serialPortBinding failed to check data availability!";
-			std::cerr << " BluetoothException= \"" << bte.what() << "\"\n";
+			std::cerr << "FAILED! BluetoothException= \"" << bte.what() << "\"\n";
 			portConnected = false;
 		}
 		if (!portConnected)
 		{
 			try
 			{
+				std::cout << "serialPortBinding reconnecting... ";
 				serialPortBinding->Connect();
-				std::cout << "serialPortBinding reconnected...\n";
+				std::cout << "Connected!\n";
 				portConnected = true;
 			}
 			catch (const BluetoothException& bte)
 			{
-				std::cerr << "serialPortBinding failed to connect!";
-				std::cerr << " BluetoothException= \"" << bte.what() << "\"\n";
+				std::cerr << "FAILED! BluetoothException= \"" << bte.what() << "\"\n";
 				portConnected = false;
 			}
 		}
@@ -115,14 +122,13 @@ int main(int argc, char** argv)
 		}
 		try
 		{
-			std::cerr << "Reading... ";
+			std::cerr << "serialPortBinding Reading... ";
 			numBytesRead = serialPortBinding->Read(buffer, BUFFER_SIZE);
 			std::cerr << "Done!\n";
 		}
 		catch (const BluetoothException& bte)
 		{
-			std::cerr << "serialPortBinding Read failed!";
-			std::cerr << " BluetoothException= \"" << bte.what() << "\"\n";
+			std::cerr << "FAILED! BluetoothException= \"" << bte.what() << "\"\n";
 			continue;
 		}
 		if (numBytesRead <= 0)
@@ -178,6 +184,26 @@ int main(int argc, char** argv)
 		// Step 2) Build and execute the sql query //
 		if (doQuery)
 		{
+			// send the sensor an acknowlegement packet to turn off the bluetooth connection because
+			//	apparently staying connected costs infinite amps
+			bool sentAck = false;
+			while (!sentAck)
+			{
+				try
+				{
+					std::cerr << "serialPortBinding Sending ACK... ";
+					///TODO: handle the case where the ACK doesn't get completely sent
+					serialPortBinding->Write("ACK", 3);
+					std::cerr << "Done!\n";
+					//serialPortBinding->Close();
+					sentAck = true;
+				}
+				catch (const BluetoothException& bte)
+				{
+					std::cerr << "FAILED! BluetoothException= \"" << bte.what() << "\"\n";
+					continue;
+				}
+			}
 			std::stringstream ssQuery;
 			ssQuery << "INSERT INTO `sensor-0`(`datetime`, `temperature-celsius`, `humidity`, `voltage`)";
 			ssQuery << " VALUES (CURRENT_TIMESTAMP()," << temperatureCelsius;
