@@ -181,6 +181,7 @@ int main(int argc, char** argv)
 		extractFloat(humidIndex, humidIndexEnd, humidity);
 		extractFloat(tempIndex , tempIndexEnd , temperatureCelsius);
 		extractFloat(voltIndex , voltIndexEnd , voltage);
+		std::cout << "strData=\"" << strData << "\"\n";
 		// Step 2) Build and execute the sql query //
 		if (doQuery)
 		{
