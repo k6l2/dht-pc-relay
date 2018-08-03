@@ -16,6 +16,61 @@ void showError(MYSQL* mysql)
 		mysql_sqlstate(mysql) << "] \"" <<
 		mysql_error(mysql) << "\"\n";
 }
+// Returns true if valid data string exists in the "inString"
+//	false otherwise (could not extract valid data)
+bool extractData(const std::string& inString, int& outSensorId, float& outHumidity,
+	float& outTempCelsius, float& outVolt, std::string& outStringAck, size_t& outDataEnd)
+{
+	//	valid data string format: 
+	//		DHT{[INT:sensorId],[FLOAT:humidity],[FLOAT:temp],
+	//		[FLOAT:voltage],[STRING:ack]}
+	const size_t dataBegin = inString.find("DHT{");
+	outDataEnd             = inString.find("}", dataBegin);
+	if (dataBegin  == std::string::npos ||
+		outDataEnd == std::string::npos)
+	{
+		return false;
+	}
+	// extract sensorId //
+	const size_t idEnd = inString.find(",", dataBegin);
+	if (idEnd >= outDataEnd)
+	{
+		return false;
+	}
+	const std::string strSensorId =
+		inString.substr(dataBegin + 4, (idEnd - dataBegin) - 4);
+	outSensorId = atoi(strSensorId.c_str());
+	// extract relative humidity //
+	const size_t humidityEnd = inString.find(",", idEnd + 1);
+	if (humidityEnd >= outDataEnd)
+	{
+		return false;
+	}
+	const std::string strRelativeHumidity =
+		inString.substr(idEnd + 1, (humidityEnd - idEnd) - 1);
+	outHumidity = float(atof(strRelativeHumidity.c_str()));
+	// extract temperature (C) //
+	const size_t celsiusEnd = inString.find(",", humidityEnd + 1);
+	if (celsiusEnd >= outDataEnd)
+	{
+		return false;
+	}
+	const std::string strCelsius =
+		inString.substr(humidityEnd + 1, (celsiusEnd - humidityEnd) - 1);
+	outTempCelsius = float(atof(strCelsius.c_str()));
+	// extract voltage //
+	const size_t voltageEnd = inString.find(",", celsiusEnd + 1);
+	if (voltageEnd >= outDataEnd)
+	{
+		return false;
+	}
+	const std::string strVoltage =
+		inString.substr(celsiusEnd + 1, (voltageEnd - celsiusEnd) - 1);
+	outVolt = float(atof(strVoltage.c_str()));
+	// extract acknowledgement string //
+	outStringAck = inString.substr(voltageEnd + 1, (outDataEnd - voltageEnd) - 1);
+	return true;
+}
 int main(int argc, char** argv)
 {
 	if (argc != 7)
@@ -122,9 +177,9 @@ int main(int argc, char** argv)
 		}
 		try
 		{
-			std::cerr << "serialPortBinding Reading... ";
+			std::cout << "serialPortBinding Reading... ";
 			numBytesRead = serialPortBinding->Read(buffer, BUFFER_SIZE);
-			std::cerr << "Done!\n";
+			std::cout << "Done!\n";
 		}
 		catch (const BluetoothException& bte)
 		{
@@ -138,89 +193,60 @@ int main(int argc, char** argv)
 		cumulativeBuffer += std::string{ buffer, size_t(numBytesRead) };
 		const std::string strData = cumulativeBuffer;
 		// Step 1) extract the data from the buffer //
-		const size_t humidIndex    = strData.find("H=");
-		const size_t humidIndexEnd = strData.find("%");
-		const size_t tempIndex     = strData.find("T=");
-		const size_t tempIndexEnd  = strData.find("C");
-		const size_t voltIndex     = strData.find("V=");
-		const size_t voltIndexEnd  = strData.find("U");
-		if (humidIndex    == std::string::npos ||
-			humidIndexEnd == std::string::npos ||
-			tempIndex     == std::string::npos || 
-			tempIndexEnd  == std::string::npos || 
-			voltIndex     == std::string::npos || 
-			voltIndexEnd  == std::string::npos)
+		int sensorId;
+		float humidity, temperatureCelsius, voltage;
+		std::string strAck;
+		size_t dataEnd;
+		const bool validDataExtracted = extractData(strData, 
+			sensorId, humidity, temperatureCelsius, voltage, strAck, dataEnd);
+		if (!validDataExtracted)
 		{
-			static const size_t ARBITRARILY_LARGE_CUMULATIVE_BUFFER_SIZE = 1024;
-			if (cumulativeBuffer.size() >= ARBITRARILY_LARGE_CUMULATIVE_BUFFER_SIZE)
-			{
-				std::cerr << "cumulativeBuffer overflowed! reset to empty string\n";
-				std::cerr << "\tcumulativeBuffer=\""<<cumulativeBuffer<<"\"\n";
-				cumulativeBuffer = "";
-			}
-			std::cout << "cumulativeBuffer insufficient data:\"" << cumulativeBuffer << "\"\n";
+			std::cout << "invalid data=\"" << strData << "\"\n";
 			continue;
 		}
-		float humidity;
-		float temperatureCelsius;
-		float voltage;
-		bool doQuery = true;
-		auto extractFloat = [&](size_t index, size_t indexEnd, float& outFloat)->void
+		/// DEBUG /////////////////////////////////
+		std::cout << "sensor[" << sensorId << "] rh=" << humidity <<
+			"% t=" << temperatureCelsius << "C volts=" << voltage <<
+			" ACK=" << strAck << "\n";
+		// We now have the data, send the ack string back to the sensor //
+		//	each time we write data to the serial port, we cut off the characters that
+		//	were written from strAck successfully
+		while (!strAck.empty())
 		{
-			if (index != std::string::npos && indexEnd != std::string::npos)
+			bool sendFailed = false;
+			try
 			{
-				const size_t indexReal = index + 2;
-				std::string strFloat = strData.substr(indexReal, indexEnd - indexReal);
-				outFloat = float(atof(strFloat.c_str()));
+				std::cout << "serialPortBinding Sending ACK... ";
+				const int bytesWritten = 
+					serialPortBinding->Write(strAck.c_str(), (int)strAck.size());
+				std::cout << "Done! wrote=\""<<strAck.substr(0, bytesWritten)<<"\"\n";
+				// erase the part of the ack string that we successfully wrote
+				strAck = strAck.substr(bytesWritten);
 			}
-			else
+			catch (const BluetoothException& bte)
 			{
-				doQuery = false;
+				std::cerr << "FAILED! BluetoothException= \"" << bte.what() << "\"\n";
+				sendFailed = true;
 			}
-		};
-		extractFloat(humidIndex, humidIndexEnd, humidity);
-		extractFloat(tempIndex , tempIndexEnd , temperatureCelsius);
-		extractFloat(voltIndex , voltIndexEnd , voltage);
-		std::cout << "strData=\"" << strData << "\"\n";
-		// Step 2) Build and execute the sql query //
-		if (doQuery)
-		{
-			// send the sensor an acknowlegement packet to turn off the bluetooth connection because
-			//	apparently staying connected costs infinite amps
-			bool sentAck = false;
-			while (!sentAck)
+			if (sendFailed)
 			{
-				try
-				{
-					std::cerr << "serialPortBinding Sending ACK... ";
-					///TODO: handle the case where the ACK doesn't get completely sent
-					serialPortBinding->Write("ACK", 3);
-					std::cerr << "Done!\n";
-					//serialPortBinding->Close();
-					sentAck = true;
-				}
-				catch (const BluetoothException& bte)
-				{
-					std::cerr << "FAILED! BluetoothException= \"" << bte.what() << "\"\n";
-					continue;
-				}
-			}
-			std::stringstream ssQuery;
-			ssQuery << "INSERT INTO `sensor-0`(`datetime`, `temperature-celsius`, `humidity`, `voltage`)";
-			ssQuery << " VALUES (CURRENT_TIMESTAMP()," << temperatureCelsius;
-			ssQuery << "," << humidity << "," << voltage << ")";
-			std::cout << "query=\"" << ssQuery.str() << "\"\n";
-			if (mysql_real_query(mysql, ssQuery.str().c_str(), (unsigned long)ssQuery.str().size()))
-			{
-				showError(mysql);
+				// abort trying to send the rest of the ack if serial protocol fails
+				break;
 			}
 		}
-		else
+		// Step 2) Build and execute the sql query //
+		std::stringstream ssQuery;
+		ssQuery << "INSERT INTO `sensor-" << sensorId;
+		ssQuery << "`(`datetime`, `temperature-celsius`, `humidity`, `voltage`)";
+		ssQuery << " VALUES (CURRENT_TIMESTAMP()," << temperatureCelsius;
+		ssQuery << "," << humidity << "," << voltage << ")";
+		std::cout << "query=\"" << ssQuery.str() << "\"\n";
+		if (mysql_real_query(mysql, ssQuery.str().c_str(), (unsigned long)ssQuery.str().size()))
 		{
-			std::cout << "Serial Data Read! data=\"" << strData << "\"\n";
+			showError(mysql);
 		}
 		// erase cumulative buffer up util the end of the data //
-		cumulativeBuffer = cumulativeBuffer.substr(voltIndexEnd + 1);
+		cumulativeBuffer = cumulativeBuffer.substr(dataEnd + 1);
 	}
 	// CLEAN UP //
 	if (serialPortBinding)
