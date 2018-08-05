@@ -19,16 +19,22 @@ void showError(MYSQL* mysql)
 // Returns true if valid data string exists in the "inString"
 //	false otherwise (could not extract valid data)
 bool extractData(const std::string& inString, int& outSensorId, float& outHumidity,
-	float& outTempCelsius, float& outVolt, std::string& outStringAck, size_t& outDataEnd)
+	float& outTempCelsius, float& outVolt, std::string& outStrAck, uint64_t& outAck,
+	size_t& outDataEnd)
 {
 	//	valid data string format: 
 	//		DHT{[INT:sensorId],[FLOAT:humidity],[FLOAT:temp],
-	//		[FLOAT:voltage],[STRING:ack]}
+	//		[FLOAT:voltage],[uint64-base16:ack]}
 	const size_t dataBegin = inString.find("DHT{");
 	outDataEnd             = inString.find("}", dataBegin);
 	if (dataBegin  == std::string::npos ||
 		outDataEnd == std::string::npos)
 	{
+		return false;
+	}
+	if (inString.find("{", dataBegin + 4) < outDataEnd)
+	{
+		// some weird corruption of data going on here...
 		return false;
 	}
 	// extract sensorId //
@@ -67,8 +73,9 @@ bool extractData(const std::string& inString, int& outSensorId, float& outHumidi
 	const std::string strVoltage =
 		inString.substr(celsiusEnd + 1, (voltageEnd - celsiusEnd) - 1);
 	outVolt = float(atof(strVoltage.c_str()));
-	// extract acknowledgement string //
-	outStringAck = inString.substr(voltageEnd + 1, (outDataEnd - voltageEnd) - 1);
+	// extract acknowledgement string, convert from ascii-encoding to a # //
+	outStrAck = inString.substr(voltageEnd + 1, (outDataEnd - voltageEnd) - 1);
+	outAck = strtoul(outStrAck.c_str(), nullptr, 16);
 	return true;
 }
 int main(int argc, char** argv)
@@ -196,18 +203,26 @@ int main(int argc, char** argv)
 		int sensorId;
 		float humidity, temperatureCelsius, voltage;
 		std::string strAck;
+		uint64_t ack;
 		size_t dataEnd;
 		const bool validDataExtracted = extractData(strData, 
-			sensorId, humidity, temperatureCelsius, voltage, strAck, dataEnd);
+			sensorId, humidity, temperatureCelsius, voltage, strAck, ack, dataEnd);
 		if (!validDataExtracted)
 		{
 			std::cout << "invalid data=\"" << strData << "\"\n";
+			if (dataEnd != std::string::npos)
+			{
+				// we found data, but it is corrupted somehow, so just discard it!
+				std::cout << "Discarding corrupted data! cumulativeBuffer=\"" <<
+					cumulativeBuffer << "\"\n";
+				cumulativeBuffer = cumulativeBuffer.substr(dataEnd + 1);
+			}
 			continue;
 		}
 		/// DEBUG /////////////////////////////////
 		std::cout << "sensor[" << sensorId << "] rh=" << humidity <<
 			"% t=" << temperatureCelsius << "C volts=" << voltage <<
-			" ACK=" << strAck << "\n";
+			" ACK=" << strAck <<"("<<ack<<")\n";
 		// We now have the data, send the ack string back to the sensor //
 		//	each time we write data to the serial port, we cut off the characters that
 		//	were written from strAck successfully
