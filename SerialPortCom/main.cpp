@@ -24,7 +24,7 @@ bool extractData(const std::string& inString, int& outSensorId, float& outHumidi
 {
 	//	valid data string format: 
 	//		DHT{[INT:sensorId],[FLOAT:humidity],[FLOAT:temp],
-	//		[FLOAT:voltage],[uint64-base16:ack]}
+	//		[FLOAT:voltage],[uint64-base36:ack]}
 	const size_t dataBegin = inString.find("DHT{");
 	outDataEnd             = inString.find("}", dataBegin);
 	if (dataBegin  == std::string::npos ||
@@ -75,7 +75,7 @@ bool extractData(const std::string& inString, int& outSensorId, float& outHumidi
 	outVolt = float(atof(strVoltage.c_str()));
 	// extract acknowledgement string, convert from ascii-encoding to a # //
 	outStrAck = inString.substr(voltageEnd + 1, (outDataEnd - voltageEnd) - 1);
-	outAck = strtoul(outStrAck.c_str(), nullptr, 16);
+	outAck = strtoul(outStrAck.c_str(), nullptr, 36);
 	return true;
 }
 int main(int argc, char** argv)
