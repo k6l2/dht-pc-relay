@@ -1,5 +1,8 @@
 ///TODO: some kind of log file maybe?... 
 ///	or maybe that should just be done at the command line...
+#include <imgui.h>
+#include <imgui-SFML.h>
+#include <SFML/Graphics.hpp>
 #include <Windows.h>
 #include <iostream>
 #include <string>
@@ -80,6 +83,31 @@ bool extractData(const std::string& inString, int& outSensorId, float& outHumidi
 }
 int main(int argc, char** argv)
 {
+	sf::RenderWindow window(sf::VideoMode(1280, 720), "SFML window");
+	ImGui::SFML::Init(window);
+	sf::Clock deltaClock;
+	while (window.isOpen())
+	{
+		sf::Event event;
+		while (window.pollEvent(event))
+		{
+			ImGui::SFML::ProcessEvent(event);
+			if (event.type == sf::Event::Closed)
+				window.close();
+		}
+		const sf::Time timeDelta = deltaClock.restart();
+		ImGui::SFML::Update(window, timeDelta);
+		window.clear();
+		// Main logic goes here //
+		{
+			ImGui::Begin("testing!");
+			ImGui::End();
+		}
+		ImGui::SFML::Render(window);
+		window.display();
+	}
+	ImGui::SFML::Shutdown();
+	/*
 	if (argc != 7)
 	{
 		std::cout << 
@@ -270,7 +298,7 @@ int main(int argc, char** argv)
 		delete serialPortBinding;
 		serialPortBinding = nullptr;
 	}
-	mysql_close(mysql);
+	mysql_close(mysql);*/
 	system("pause");
 	return EXIT_SUCCESS;
 }
